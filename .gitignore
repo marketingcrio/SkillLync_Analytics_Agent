@@ -1,0 +1,11 @@
+.env
+.tmp/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.DS_Store
+memory/local_preferences.md
+config/*.json
+data/golden_baseline.json
