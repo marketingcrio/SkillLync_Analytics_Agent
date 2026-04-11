@@ -1,40 +1,60 @@
 # Shared Business Context — Skill-Lync
 
-> **Status: STUB.** Fill this in as you learn from the user. Do not guess.
+> **Last updated:** 2026-04-10. Answers from user/data owner interview.
 
 ---
 
 ## Company
 
-Skill-Lync is an upskilling company. Sister company to Crio. (TODO: confirm — products, target audience, competitive position.)
+Skill-Lync is an upskilling company. Sister company to Crio. Same Fabric tenant + service principal, different warehouse.
 
 ## Products / Programs
 
-TODO: list of programs/courses sold. The fact table has `Program_Interested`, `sale_program`, and `mx_interested_courses` — running `SELECT DISTINCT sale_program FROM fact.Final_Table WHERE Is_Valid_Enroll=1` would give a starting list.
+Two product categories:
+- **PG (Post Graduate Programs)** — higher ticket (₹65k–₹1.2L), sold via tiers:
+  - Ultra (premium), Pro (mid), Basic (entry), Upskilling, Student (discounted)
+  - Top sellers: PG IN CAD (173 enrolls), PG IN EV (24), PG IN CFD (16), PG IN CAE (16)
+- **Individual Courses** — lower ticket (₹5k–₹50k), standalone courses
+  - E.g., "Introduction to GUI based CFD", "Python for mechanical engineers"
+- **Combined Individual** — bundle of multiple individual courses (34 enrolls)
 
-Known program patterns from the DDL:
-- IIT Jammu Design
-- IIT Jammu EV
-- (others — TBD)
+`sale_ind_pg` in fact table: 'PG' / 'Individual Course' / 'Combined Individual'.
 
-## Pricing
+Program naming is inconsistent (e.g., "PG IN CAD" vs "PG CAD" both exist). No canonical program master — user said to ignore normalization for now.
 
-TODO: typical ticket sizes, payment plans (full vs EMI vs MOF), discount structure.
+## Pricing / Payment
+
+- **Payment methods** (from SalesDataSumit):
+  - Full Payment (most common, ~53%)
+  - Subscription/EMI (~30%)
+  - Loan (~16%)
+  - Split Payment, One-shot (rare)
+- **Enrollment is confirmed ONLY when payment is received** — booking = payment event. No "provisional enrollment" stage.
+- `dbo.SkillLyncSalesData` is the source of truth for sales. **Manually maintained** (spreadsheet upload). 999 rows total, Feb 2025 – Apr 2026.
 
 ## Funnel
 
-Skill-Lync uses a **3-stage funnel**:
+Skill-Lync uses a **3-stage funnel with 2 demo tracks**:
 
 ```
-Lead Capture  ──►  Demo Scheduled  ──►  Demo Completed  ──►  Enroll (Valid)
+Lead Capture ──► Webinar Demo Scheduled ──► Webinar Demo Completed ──► Enroll (Valid)
+             ──► Tech Demo Scheduled    ──► Tech Demo Conducted    ──►
 ```
 
-- **Lead Capture:** any of ~50 LSQ activity codes representing form fills, downloads, page visits with intent. Bucketed as `activity_type_category = 'Lead Capture'`.
-- **Demo Scheduled:** demo booked. `activity_type_category = 'Demo Scheduled'`.
-- **Demo Completed:** demo actually attended. `activity_type_category IN ('Demo Completed - Webinars', 'SE Marked Demo Completed')`.
+- **Lead Capture:** 28 activity codes (form fills, downloads, pop-ups, etc.). `activity_type_category = 'Lead Capture'`.
+- **Demo Scheduled** — TWO separate tracks:
+  - Webinar: `activity_type_category = 'Demo Scheduled'` (code 920, group webinar booking)
+  - Tech Demo: `activity_type_category = 'SE Marked Demo Schedule'` (code 393, 1:1 with Demo Engineer)
+- **Demo Completed** — TWO separate tracks:
+  - Webinar: `activity_type_category = 'Demo Completed - Webinars'` (codes 342, 397, 921)
+  - Tech Demo: `activity_type_category = 'SE Marked Demo Completed'` (code 395)
 - **Enroll:** `Is_Valid_Enroll = 1`. Backed by a sale row in `dbo.SkillLyncSalesData`.
 
-Compared to Crio's 7-stage funnel (App → TA → 1:1 → QL → PE → Enroll), this is much simpler. There is no "trial workshop" concept here, no qualified-lead split, no provisional enrollment phase.
+**IMPORTANT:** A lead CAN have both Webinar + Tech Demo in the same month, but should NOT be double-counted in a combined "Demos" metric. Use DISTINCTCOUNT(lead_id).
+
+**Demos are conducted by a separate Demo Engineer, NOT the BDA.**
+
+Lead quality distinctions exist among Lead Capture codes (e.g., "Schedule Career Counselling" = high intent vs "Pop-up Registration" = low intent) but **no way to identify this programmatically yet**.
 
 ## Lead Segments
 
@@ -44,34 +64,54 @@ Compared to Crio's 7-stage funnel (App → TA → 1:1 → QL → PE → Enroll),
 
 ## Sources
 
-Bucketed source values seen in `Source_Bucket_Final`:
-- Direct Grow
-- Youtube
-- Meta
-- Linkedin
-- Google Ads
-- Email
-- Whatsapp
-- Organic
-- Direct
-- Others
+`source_attribution_final` values (from Lead Capture rows, ordered by volume):
+- Meta (25k leads, largest)
+- Email (20.5k)
+- Skill-Lync-Resources (10k) — not documented previously
+- Organic (4.9k)
+- Youtube (3.7k)
+- Others (2.3k)
+- Direct (1.8k)
+- Direct Grow (490)
+- Google Ads (239)
+- Linkedin (143)
+- Whatsapp (42)
+
+Marketing spend data is tracked in **Windsor.ai** and populated into the warehouse.
 
 ## Team
 
-TODO: BDA team structure, tiers, leadership. The fact table has `bda_tier` and `bda_status` from `dbo.BDATierClassification`.
+**BDA team** (Business Development Associates):
+- 42 BDAs in `dbo.BDATierClassification`
+- Tier A: 11 active (top performers)
+- Tier B: 9 active + 2 inactive
+- Tier C: 7 active + 5 inactive
+- New: 8 active (recent joinees)
+- Total: 35 active / 7 inactive
+- **Tier is performance-based** (not tenure)
 
-The xlsx files in `/Users/lakshmana/Claude/Skill-Lync Data Analysis/` may have more context:
-- `SL_BDA_Performance_Scorecard.xlsx`
-- `SL_BDA_Tier_Classification.xlsx`
-- `SL_Lead_Strategy_L2E_Targets.xlsx`
-- `SL_Operations_Playbook_PowerBI_Spec.xlsx`
+**Hierarchy** (from `dbo.[User]`):
+- SE (Sales Executive / BDA): 5,942 total (most historical)
+- DM (Direct Manager): 12
+- RSM (Regional Sales Manager): 2
+- AD (Area Director): 4
+- Regions: Domestic, International
+- `dm`, `rsm`, `ad` columns are integer IDs referencing `workforce_id`
 
-When the user asks for team-level analysis, read these first.
+**Lead assignment is automated** (scoring-based using priority_score1, prospect_star_rank).
 
-## Reporting Cadence
+**`team_domain` = program category** (the domain/program area assigned to the lead).
 
-TODO: who needs what report, how often, what format.
+## Operational Facts
 
-## Stakeholders
+- **Timestamps are in IST** (not UTC)
+- **No daily calling SOP** — no morning assignment, no daily quotas
+- **No formal QA call auditing process**
+- **ProspectStageChange is no longer populated** — ignore it
+- **prospect_stage, is_customer, lead_owner_id are snapshot (current state)** not point-in-time
+- **Test/internal leads exist** and should be excluded (`@skill-lync.com`, `@cybermindworks.com`, etc.)
 
-TODO: names, roles, communication preferences.
+## Agent Scope
+
+- Analytics engine for same-month funnel + data validation/health checks
+- NOT responsible for: daily lead assignment, email reports, GA4 integration
