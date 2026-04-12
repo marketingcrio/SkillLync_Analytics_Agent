@@ -1,0 +1,617 @@
+// ============================================================
+// SKILL-LYNC PBI DAX MEASURES — fact.FinalTable
+// ============================================================
+// Table name in PBI model: FinalTable
+// All measures use DISTINCTCOUNT(lead_id) unless noted.
+// Slicer-aware: all measures respect page/visual filters
+// (activity_year, activity_month, source_attribution_final,
+//  lead_segment, Domain_group, bda_name, bda_tier, etc.)
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 1: CORE FUNNEL MEASURES
+// ─────────────────────────────────────────────────────────────
+
+Leads =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture"
+)
+
+// Demos Scheduled — Webinar track (group booking, code 920 etc.)
+Demos_Webinar_Scheduled =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Demo Scheduled"
+)
+
+// Demos Scheduled — Tech Demo track (1:1 with Demo Engineer, code 393)
+Demos_Tech_Scheduled =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "SE Marked Demo Schedule"
+)
+
+// Combined Demos Scheduled (unique leads across both tracks)
+Demos_Scheduled =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] IN {
+        "Demo Scheduled", "SE Marked Demo Schedule"
+    }
+)
+
+// Demos Completed — Webinar track
+Demos_Webinar_Completed =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Demo Completed - Webinars"
+)
+
+// Demos Completed — Tech Demo track
+Demos_Tech_Completed =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "SE Marked Demo Completed"
+)
+
+// Combined Demos Completed (unique leads across both tracks)
+Demos_Completed =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] IN {
+        "Demo Completed - Webinars", "SE Marked Demo Completed"
+    }
+)
+
+// Enrolls — all valid enrollments across all segments
+Enrolls =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1
+)
+
+// Same Month Enrolls — Lead Capture rows where lead enrolled same month
+Same_Month_Enrolls =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[SameMonthEnrolls] = "Enrolls"
+)
+
+// Revenue — sale_value already de-duped to one row per lead per month
+Revenue =
+SUM(FinalTable[sale_value])
+
+// Revenue formatted
+Revenue_Formatted =
+VAR rev = [Revenue]
+RETURN
+    IF(rev >= 100000, FORMAT(rev / 100000, "#,##0.00") & " L",
+    IF(rev >= 1000, FORMAT(rev / 1000, "#,##0.0") & " K",
+    FORMAT(rev, "#,##0")))
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 2: FUNNEL RATIOS
+// ─────────────────────────────────────────────────────────────
+
+L2D% =
+DIVIDE([Demos_Scheduled], [Leads], 0)
+
+L2E% =
+DIVIDE([Enrolls], [Leads], 0)
+
+D2E% =
+DIVIDE([Enrolls], [Demos_Scheduled], 0)
+
+SM_L2E% =
+DIVIDE([Same_Month_Enrolls], [Leads], 0)
+
+// Demo Scheduled to Completed conversion
+DS2DC% =
+DIVIDE([Demos_Completed], [Demos_Scheduled], 0)
+
+// Avg Revenue per Enroll
+Avg_Sale_Per_Enroll =
+DIVIDE([Revenue], [Enrolls], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 3: ENROLLMENT PRODUCT SPLIT (PG vs Individual)
+// ─────────────────────────────────────────────────────────────
+
+Enrolls_PG =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[sale_ind_pg] = "PG"
+)
+
+Enrolls_Individual =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[sale_ind_pg] IN {"Individual Course", "Combined Individual"}
+)
+
+Revenue_PG =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    FinalTable[sale_ind_pg] = "PG"
+)
+
+Revenue_Individual =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    FinalTable[sale_ind_pg] IN {"Individual Course", "Combined Individual"}
+)
+
+D2E%_PG =
+DIVIDE([Enrolls_PG], [Demos_Scheduled], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 4: LEAD SEGMENT MEASURES
+// ─────────────────────────────────────────────────────────────
+
+Leads_New =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[lead_segment] = "New Lead"
+)
+
+Leads_Old_Capture =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[lead_segment] = "Old Lead - Capture"
+)
+
+Enrolls_New =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[lead_segment] = "New Lead"
+)
+
+Enrolls_Old_Capture =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[lead_segment] = "Old Lead - Capture"
+)
+
+Enrolls_Old_Others =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[lead_segment] = "Old - Others"
+)
+
+L2E%_New =
+DIVIDE([Enrolls_New], [Leads_New], 0)
+
+L2E%_Old_Capture =
+DIVIDE([Enrolls_Old_Capture], [Leads_Old_Capture], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 5: ENROLLMENT COHORT LAG (M+0 to M+12)
+// ─────────────────────────────────────────────────────────────
+
+Enrolls_M0 =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Enroll_Month_Bucket_Capped] = "M+0"
+)
+
+Enrolls_M1 =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Enroll_Month_Bucket_Capped] = "M+1"
+)
+
+Enrolls_M2 =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Enroll_Month_Bucket_Capped] = "M+2"
+)
+
+Enrolls_M3 =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Enroll_Month_Bucket_Capped] = "M+3"
+)
+
+// Cumulative Enrolls up to M+N
+Cumulative_Enrolls_M3 =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Enroll_Month_Bucket_Capped] IN {"M+0","M+1","M+2","M+3"}
+)
+
+Cumulative_L2E%_M3 =
+DIVIDE([Cumulative_Enrolls_M3], [Leads], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 6: ASSIGNMENT & LEAD ALLOCATION MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Leads that received a BDA assignment this month
+Leads_Assigned =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Assigned_This_Month] = 1
+)
+
+// First-time assignments only
+Leads_Assigned_First =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1
+)
+
+// Assignment from New leads vs Old leads
+Leads_Assigned_New =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[assignment_type_month] = "New"
+)
+
+Leads_Assigned_Others =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[assignment_type_month] = "Others"
+)
+
+// Assignment coverage: what % of leads got assigned?
+Assignment_Coverage% =
+DIVIDE([Leads_Assigned], [Leads], 0)
+
+// Leads → Assigned → Enrolled funnel
+LA2E% =
+DIVIDE([Enrolls], [Leads_Assigned], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 7: STAR RANK & QUALITY MATCHING
+// ─────────────────────────────────────────────────────────────
+
+// Leads assigned by star rank
+Leads_Assigned_FourStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[lead_star_rank_at_assign] = "FourStar"
+)
+
+Leads_Assigned_ThreeStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[lead_star_rank_at_assign] = "ThreeStar"
+)
+
+Leads_Assigned_TwoStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[lead_star_rank_at_assign] = "TwoStar"
+)
+
+Leads_Assigned_OneStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[lead_star_rank_at_assign] = "OneStar"
+)
+
+// Perfect star-rank match: lead star = BDA star
+Star_Match_Count =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    FinalTable[Is_Star_Match] = 1
+)
+
+Star_Match% =
+DIVIDE(
+    [Star_Match_Count],
+    [Leads_Assigned_First],
+    0
+)
+
+// Enrolls by lead star rank at assignment (conversion by quality)
+Enrolls_FourStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[lead_star_rank_at_assign] = "FourStar"
+)
+
+Enrolls_ThreeStar =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    FinalTable[lead_star_rank_at_assign] = "ThreeStar"
+)
+
+// Conversion rate by star rank
+L2E%_FourStar =
+DIVIDE([Enrolls_FourStar], [Leads_Assigned_FourStar], 0)
+
+L2E%_ThreeStar =
+DIVIDE([Enrolls_ThreeStar], [Leads_Assigned_ThreeStar], 0)
+
+// Avg P1 score at assignment
+Avg_P1_Score_At_Assign =
+CALCULATE(
+    AVERAGE(FinalTable[p1_score_at_assign]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1
+)
+
+// Revenue by star rank
+Revenue_FourStar =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    FinalTable[lead_star_rank_at_assign] = "FourStar"
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 8: BDA PERFORMANCE MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Leads per BDA (use with bda_name on axis)
+Leads_Per_BDA =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    NOT ISBLANK(FinalTable[bda_name])
+)
+
+// Enrolls per BDA
+Enrolls_Per_BDA =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    NOT ISBLANK(FinalTable[bda_name])
+)
+
+// Revenue per BDA
+Revenue_Per_BDA =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    NOT ISBLANK(FinalTable[bda_name])
+)
+
+// Active BDAs (those with at least one assignment this month)
+Active_BDAs =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[bda_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1
+)
+
+// Avg Enrolls per BDA
+Avg_Enrolls_Per_BDA =
+DIVIDE([Enrolls_Per_BDA], [Active_BDAs], 0)
+
+// BDA L2E%
+BDA_L2E% =
+DIVIDE([Enrolls_Per_BDA], [Leads_Per_BDA], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 9: BDA TIER PERFORMANCE
+// ─────────────────────────────────────────────────────────────
+
+// Use with bda_tier on axis/slicer
+Leads_by_Tier =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    NOT ISBLANK(FinalTable[bda_tier])
+)
+
+Enrolls_by_Tier =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    NOT ISBLANK(FinalTable[bda_tier])
+)
+
+Revenue_by_Tier =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    NOT ISBLANK(FinalTable[bda_tier])
+)
+
+L2E%_by_Tier =
+DIVIDE([Enrolls_by_Tier], [Leads_by_Tier], 0)
+
+BDAs_per_Tier =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[bda_id]),
+    FinalTable[Is_First_Assignment_Per_Month] = 1,
+    NOT ISBLANK(FinalTable[bda_tier])
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 10: SOURCE ATTRIBUTION MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Use with source_attribution_final on axis
+// All core measures (Leads, Demos, Enrolls, Revenue) already
+// work with source_attribution_final as a slicer/axis.
+// These are convenience measures for source-specific views:
+
+CPE =
+// Cost Per Enrollment — requires a spend table (future)
+// Placeholder for when Windsor.ai spend data is loaded
+BLANK()
+
+Leads_by_Source =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    NOT ISBLANK(FinalTable[source_attribution_final])
+)
+
+Enrolls_by_Source =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    NOT ISBLANK(FinalTable[source_attribution_final])
+)
+
+L2E%_by_Source =
+DIVIDE([Enrolls_by_Source], [Leads_by_Source], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 11: MONTH-OVER-MONTH COMPARISON
+// ─────────────────────────────────────────────────────────────
+
+Leads_PM =
+CALCULATE(
+    [Leads],
+    DATEADD(FinalTable[activity_month_start], -1, MONTH)
+)
+
+Enrolls_PM =
+CALCULATE(
+    [Enrolls],
+    DATEADD(FinalTable[activity_month_start], -1, MONTH)
+)
+
+Revenue_PM =
+CALCULATE(
+    [Revenue],
+    DATEADD(FinalTable[activity_month_start], -1, MONTH)
+)
+
+Leads_MoM_Delta = [Leads] - [Leads_PM]
+
+Leads_MoM% =
+DIVIDE([Leads] - [Leads_PM], [Leads_PM], 0)
+
+Enrolls_MoM% =
+DIVIDE([Enrolls] - [Enrolls_PM], [Enrolls_PM], 0)
+
+Revenue_MoM% =
+DIVIDE([Revenue] - [Revenue_PM], [Revenue_PM], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 12: DOMAIN / PROGRAM MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Use with Domain_group or sale_program on axis
+Leads_by_Domain =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    NOT ISBLANK(FinalTable[Domain_group])
+)
+
+Enrolls_by_Domain =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    NOT ISBLANK(FinalTable[Domain_group])
+)
+
+Enrolls_by_Program =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_Valid_Enroll] = 1,
+    NOT ISBLANK(FinalTable[sale_program])
+)
+
+Revenue_by_Program =
+CALCULATE(
+    SUM(FinalTable[sale_value]),
+    NOT ISBLANK(FinalTable[sale_program])
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 13: DATA QUALITY / EXCLUSION MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// System/test leads (should be excluded from analysis)
+System_Leads =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[Is_System_Activity] = 1
+)
+
+// Total rows (for health check)
+Total_Rows = COUNTROWS(FinalTable)
+
+// Unique leads in current filter context
+Unique_Leads = DISTINCTCOUNT(FinalTable[lead_id])
+
+// Data freshness indicator
+Latest_Activity_Date = MAX(FinalTable[created_at])
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 14: CUSTOMER PROFILE MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Use with Customer_Profile on axis/slicer
+Leads_Job_Seeker =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[Customer_Profile] = "JOB SEEKER"
+)
+
+Leads_Student =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[Customer_Profile] = "STUDENT"
+)
+
+Leads_Working_Professional =
+CALCULATE(
+    DISTINCTCOUNT(FinalTable[lead_id]),
+    FinalTable[activity_type_category] = "Lead Capture",
+    FinalTable[Customer_Profile] = "WORKING PROFESSIONAL"
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 15: KPI CARD MEASURES (for dashboard header)
+// ─────────────────────────────────────────────────────────────
+
+KPI_Leads =
+VAR current_val = [Leads]
+VAR prev_val = [Leads_PM]
+VAR delta = DIVIDE(current_val - prev_val, prev_val, 0)
+RETURN current_val
+
+KPI_Enrolls = [Enrolls]
+
+KPI_Revenue = [Revenue]
+
+KPI_L2E = [L2E%]
+
+KPI_Leads_MoM_Arrow =
+IF([Leads_MoM%] > 0, "▲ " & FORMAT([Leads_MoM%], "0.0%"),
+IF([Leads_MoM%] < 0, "▼ " & FORMAT([Leads_MoM%], "0.0%"),
+"─ 0.0%"))
+
+KPI_Enrolls_MoM_Arrow =
+IF([Enrolls_MoM%] > 0, "▲ " & FORMAT([Enrolls_MoM%], "0.0%"),
+IF([Enrolls_MoM%] < 0, "▼ " & FORMAT([Enrolls_MoM%], "0.0%"),
+"─ 0.0%"))

@@ -1,0 +1,225 @@
+// ============================================================
+// SKILL-LYNC PBI DAX MEASURES — fact.CallDetail
+// ============================================================
+// Table name in PBI model: CallDetail
+// ALL measures filter on Is_Valid_Call = 1 (excludes spam dials)
+// Use with: call_year, call_month, bda_name, bda_tier,
+//           Domain_group, Customer_Profile, team_domain_current
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 1: CORE CALLING MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Total valid dials (not unique leads — total call count)
+Dials =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1
+)
+
+// Unique leads dialed
+Dialled_Leads =
+CALCULATE(
+    DISTINCTCOUNT(CallDetail[lead_id]),
+    CallDetail[Is_Valid_Call] = 1
+)
+
+// Unique leads actually connected (conversation happened)
+Connected_Leads =
+CALCULATE(
+    DISTINCTCOUNT(CallDetail[lead_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[Is_Connected_Call] = 1
+)
+
+// Total connected calls (not unique — total conversations)
+Connected_Calls =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[Is_Connected_Call] = 1
+)
+
+// Unique leads that did not pick up
+DNP_Leads =
+CALCULATE(
+    DISTINCTCOUNT(CallDetail[lead_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[Is_DNP_Call] = 1
+)
+
+// Total DNP calls
+DNP_Calls =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[Is_DNP_Call] = 1
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 2: CALLING RATIOS
+// ─────────────────────────────────────────────────────────────
+
+// Connectivity rate (what % of dialled leads connected?)
+Connectivity% =
+DIVIDE([Connected_Leads], [Dialled_Leads], 0)
+
+// DNP rate
+DNP_Rate =
+DIVIDE([DNP_Leads], [Dialled_Leads], 0)
+
+// Connected calls per connected lead (call intensity)
+CC_per_Lead =
+DIVIDE([Connected_Calls], [Connected_Leads], 0)
+
+// Dials per lead (call effort)
+Dials_per_Lead =
+DIVIDE([Dials], [Dialled_Leads], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 3: DURATION MEASURES
+// ─────────────────────────────────────────────────────────────
+
+// Average call duration (connected calls only, in seconds)
+Avg_Call_Duration_Sec =
+CALCULATE(
+    AVERAGE(CallDetail[call_duration_sec]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[Is_Connected_Call] = 1
+)
+
+// Average call duration formatted as M:SS
+Avg_Call_Duration_Formatted =
+VAR secs = [Avg_Call_Duration_Sec]
+RETURN
+    IF(ISBLANK(secs), "-",
+    FORMAT(INT(secs / 60), "0") & ":" & FORMAT(MOD(INT(secs), 60), "00"))
+
+// Calls by duration bucket (use with call_duration_bucket on axis)
+Calls_Under_30s =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[call_duration_bucket] = "<30s"
+)
+
+Calls_30_60s =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[call_duration_bucket] = "30-60s"
+)
+
+Calls_60_180s =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[call_duration_bucket] = "60-180s"
+)
+
+Calls_Over_180s =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[call_duration_bucket] = ">180s"
+)
+
+// Quality call ratio (>60s = meaningful conversation)
+Quality_Call% =
+DIVIDE(
+    CALCULATE(
+        COUNT(CallDetail[call_id]),
+        CallDetail[Is_Valid_Call] = 1,
+        CallDetail[Is_Connected_Call] = 1,
+        CallDetail[call_duration_sec] > 60
+    ),
+    [Connected_Calls],
+    0
+)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 4: BDA CALLING PERFORMANCE
+// ─────────────────────────────────────────────────────────────
+
+// Use with bda_name or bda_tier on axis
+Active_Calling_BDAs =
+CALCULATE(
+    DISTINCTCOUNT(CallDetail[se_user_id]),
+    CallDetail[Is_Valid_Call] = 1
+)
+
+Dials_per_BDA =
+DIVIDE([Dials], [Active_Calling_BDAs], 0)
+
+Connected_per_BDA =
+DIVIDE([Connected_Calls], [Active_Calling_BDAs], 0)
+
+Dialled_Leads_per_BDA =
+DIVIDE([Dialled_Leads], [Active_Calling_BDAs], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 5: MANUAL vs AUTO-DIALER
+// ─────────────────────────────────────────────────────────────
+
+Dials_Manual =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[is_manual_call_done] = TRUE()
+)
+
+Dials_Auto =
+CALCULATE(
+    COUNT(CallDetail[call_id]),
+    CallDetail[Is_Valid_Call] = 1,
+    CallDetail[is_manual_call_done] = FALSE()
+)
+
+Manual_Call% =
+DIVIDE([Dials_Manual], [Dials], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 6: MoM CALLING COMPARISON
+// ─────────────────────────────────────────────────────────────
+
+Dials_PM =
+CALCULATE(
+    [Dials],
+    DATEADD(CallDetail[call_month_start], -1, MONTH)
+)
+
+Connected_Leads_PM =
+CALCULATE(
+    [Connected_Leads],
+    DATEADD(CallDetail[call_month_start], -1, MONTH)
+)
+
+Connectivity%_PM =
+CALCULATE(
+    [Connectivity%],
+    DATEADD(CallDetail[call_month_start], -1, MONTH)
+)
+
+Dials_MoM% =
+DIVIDE([Dials] - [Dials_PM], [Dials_PM], 0)
+
+
+// ─────────────────────────────────────────────────────────────
+// SECTION 7: KPI CARDS FOR CALLING DASHBOARD
+// ─────────────────────────────────────────────────────────────
+
+KPI_Dials = [Dials]
+KPI_Connectivity = [Connectivity%]
+KPI_Avg_Duration = [Avg_Call_Duration_Formatted]
+
+KPI_Dials_MoM_Arrow =
+IF([Dials_MoM%] > 0, "▲ " & FORMAT([Dials_MoM%], "0.0%"),
+IF([Dials_MoM%] < 0, "▼ " & FORMAT([Dials_MoM%], "0.0%"),
+"─ 0.0%"))
