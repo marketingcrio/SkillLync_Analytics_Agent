@@ -316,12 +316,105 @@ def report_funnel_by_segment(month, year, conn=None):
     """, conn=conn, report_name="funnel_by_segment")
 
 
+# ── Manager-level Demo Reports ────────────────────────────────────────────────
+#
+# Tech Demo = SE-marked demo (1:1, code 393/395). Excludes webinar auto-logs.
+# Counts are DISTINCTCOUNT(lead_id) to match DAX measures Demos_Tech_Scheduled /
+# Demos_Tech_Completed in docs/PBI_DAX_Measures.dax.
+#
+# Hierarchy is resolved via dim.[User] (see sql/12_dim_user.sql — deploy first).
+# Rollups use CURRENT manager (not manager-at-time-of-activity).
+#
+# Note on summation: sum of per-DM rows may exceed the grand total when a single
+# lead is worked by SEs under different DMs. This is correct and matches PBI.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_DEMO_METRICS_SQL = """
+    COUNT(DISTINCT CASE WHEN f.activity_type_category = 'SE Marked Demo Schedule'
+        THEN f.lead_id END) AS Demos_Tech_Scheduled,
+
+    COUNT(DISTINCT CASE WHEN f.activity_type_category = 'SE Marked Demo Completed'
+        THEN f.lead_id END) AS Demos_Tech_Completed
+"""
+
+_DEMO_FILTER_SQL = """
+    f.activity_year = {year} AND f.activity_month = {month}
+    AND f.activity_type_category IN ('SE Marked Demo Schedule', 'SE Marked Demo Completed')
+"""
+
+
+def _demos_by_level(month, year, level, conn=None):
+    """Shared implementation for BDA / DM / RSM / AD level demo reports.
+
+    level: one of 'bda', 'dm', 'rsm', 'ad'.
+    """
+    unassigned = "'(Unassigned)'"
+    if level == 'bda':
+        group_id, group_name = 'u.user_id', 'u.user_name'
+        label = 'BDA'
+        extra = f", COALESCE(u.dm_name, {unassigned}) AS DM"
+    elif level == 'dm':
+        group_id, group_name = 'u.dm_id', 'u.dm_name'
+        label = 'DM'
+        extra = ''
+    elif level == 'rsm':
+        group_id, group_name = 'u.rsm_id', 'u.rsm_name'
+        label = 'RSM'
+        extra = ''
+    elif level == 'ad':
+        group_id, group_name = 'u.ad_id', 'u.ad_name'
+        label = 'AD'
+        extra = ''
+    else:
+        raise ValueError(f"Unknown level: {level}")
+
+    bda_extra_group = f", COALESCE(u.dm_name, {unassigned})" if level == 'bda' else ''
+    sql = f"""
+        SELECT
+            COALESCE({group_name}, {unassigned}) AS {label}{extra},
+            {_DEMO_METRICS_SQL}
+        FROM fact.Final_Table f
+        LEFT JOIN dim.[User] u ON u.user_id = f.bda_id
+        WHERE {_DEMO_FILTER_SQL.format(year=int(year), month=int(month))}
+        GROUP BY COALESCE({group_name}, {unassigned}){bda_extra_group}
+        ORDER BY Demos_Tech_Scheduled DESC
+    """
+    return run_query(sql, conn=conn, report_name=f"demos_by_{level}")
+
+
+def report_demos_by_bda(month, year, conn=None):
+    """Tech demos (scheduled + completed) by BDA, with their current DM.
+
+    Unique-lead counts. SE-marked demos only (excludes webinar auto-logs).
+    """
+    return _demos_by_level(month, year, 'bda', conn=conn)
+
+
+def report_demos_by_dm(month, year, conn=None):
+    """Tech demos rolled up to current DM. Unique-lead counts."""
+    return _demos_by_level(month, year, 'dm', conn=conn)
+
+
+def report_demos_by_rsm(month, year, conn=None):
+    """Tech demos rolled up to current RSM. Unique-lead counts."""
+    return _demos_by_level(month, year, 'rsm', conn=conn)
+
+
+def report_demos_by_ad(month, year, conn=None):
+    """Tech demos rolled up to current AD. Unique-lead counts."""
+    return _demos_by_level(month, year, 'ad', conn=conn)
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 REPORTS = {
     'funnel': report_funnel,
     'funnel_by_source': report_funnel_by_source,
     'funnel_by_segment': report_funnel_by_segment,
+    'demos_by_bda': report_demos_by_bda,
+    'demos_by_dm': report_demos_by_dm,
+    'demos_by_rsm': report_demos_by_rsm,
+    'demos_by_ad': report_demos_by_ad,
 }
 
 

@@ -138,6 +138,12 @@ Every ratio computed for: Total, PG-only, Individual-only
 ### prep schema (views)
 All existing prep views are REFERENCE ONLY — may need cleanup during rebuild.
 
+### dim schema (Power BI-facing)
+| View | Source file | Purpose |
+|---|---|---|
+| `dim.Calendar` | `sql/11_dim_calendar.sql` | Shared date dim for PBI cross-filter |
+| `dim.[User]` | `sql/12_dim_user.sql` | Flattened BDA → DM → RSM → AD hierarchy (current only). Join `fact.Final_Table[bda_id] → dim.[User][user_id]` |
+
 ---
 
 ## Crio vs Skill-Lync Structural Mapping

@@ -116,7 +116,16 @@ SELECT
           OR LOWER(COALESCE(le.mx_student_or_working_professional, '')) LIKE '%experience%'
             THEN 'WORKING PROFESSIONAL'
         ELSE 'OTHERS'
-    END AS varchar(50)) AS Customer_Profile
+    END AS varchar(50)) AS Customer_Profile,
+
+    -- Profile short code (CWP / NWP / STU / NULL)
+    -- TBD and NULL both become NULL. Unemployed → NWP (matches Job Seeker semantics).
+    CAST(CASE le.mx_student_or_working_professional
+        WHEN 'Working Professional' THEN 'CWP'
+        WHEN 'Job Seeker'           THEN 'NWP'
+        WHEN 'Unemployed'           THEN 'NWP'
+        WHEN 'Student'              THEN 'STU'
+    END AS varchar(5)) AS profile
 
 FROM dbo.Leads l
 LEFT JOIN dbo.LeadsExtension le

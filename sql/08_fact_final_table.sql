@@ -112,12 +112,19 @@ base_with_source_bucket AS (
                OR LOWER(lc_source) LIKE '%video_ad%')
                 THEN 'Youtube'
 
+            /* Meta - Resources: paid Meta campaigns driving to resources.skill-lync.com */
+            WHEN lc_source IS NOT NULL
+             AND LOWER(lc_source) = 'ig'
+             AND LOWER(COALESCE(lc_sourceCampaign,'')) LIKE '%website_conv%'
+                THEN 'Meta - Resources'
+
             WHEN lc_source IS NOT NULL
              AND (LOWER(lc_source) LIKE '%facebook%'
                OR LOWER(lc_source) LIKE '%fb%'
                OR LOWER(lc_source) LIKE '%insta%'
                OR LOWER(lc_source) LIKE '%instagram%'
-               OR LOWER(lc_source) LIKE '%meta%')
+               OR LOWER(lc_source) LIKE '%meta%'
+               OR LOWER(lc_source) = 'ig')
                 THEN 'Meta'
 
             WHEN lc_source IS NOT NULL
@@ -148,9 +155,11 @@ base_with_source_bucket AS (
                OR LOWER(lc_source) LIKE '%yandex%')
                 THEN 'Organic'
 
+            /* Organic Resources: sl_resource page with organic medium */
             WHEN lc_source IS NOT NULL
-             AND LOWER(lc_source) LIKE '%resource%'
-                THEN 'Skill-Lync-Resources'
+             AND LOWER(lc_source) = 'sl_resource'
+             AND LOWER(COALESCE(lc_sourceMedium,'')) = 'organic'
+                THEN 'Organic Resources'
 
             WHEN lc_source IS NOT NULL
              AND LOWER(lc_source) LIKE '%skill-lync.com%'
@@ -244,6 +253,7 @@ base_with_lead AS (
 
         -- Customer profile
         ul.Customer_Profile,
+        ul.profile,
 
         -- Team domain: current (snapshot) from LeadsExtension
         ul.le_team_domain             AS team_domain_current,
@@ -543,6 +553,7 @@ SELECT
     b.mx_course_interested_in,
     b.mx_webinar_interest,
     b.Customer_Profile,
+    b.profile,
     b.Domain_group,
     b.team_domain_current,
 
@@ -726,6 +737,15 @@ SELECT
     arm.p1_score_at_assign,
     arm.p1_star_rank_at_assign,
     arm.bda_star_rank_at_assign,
+
+    /* --- P1 Rank effective (fallback chain — for slicers / rollups) --- */
+    /* 1) latest_p1_star_rank — from most recent assignment event ever       */
+    /* 2) lead_star_rank — current LSQ snapshot, for leads never routed      */
+    /*    through lead_assignment_history                                    */
+    /* Reduces Jan 2026 Lead Capture NULL bucket from 17% → 9%.              */
+    CAST(COALESCE(lab.latest_p1_star_rank, b.lead_star_rank) AS varchar(20))
+                                    AS p1_star_rank_effective,
+
     arm.assignment_type_month,
     arm.source_score_at_assign,
     arm.lead_type_score_at_assign,
